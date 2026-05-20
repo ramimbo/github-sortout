@@ -30,6 +30,8 @@ node --check github-sortout.user.js
 npm test
 ```
 
+CI runs these same non-live checks on pull requests and pushes to `main`.
+
 Run the live smoke checks when touching GitHub page selectors or timeline behavior:
 
 ```sh
