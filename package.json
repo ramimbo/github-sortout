@@ -1,0 +1,13 @@
+{
+  "name": "github-sortout",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "playwright test",
+    "test:live": "LIVE_GITHUB=1 playwright test tests/live-github.spec.js"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.60.0"
+  }
+}
