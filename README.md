@@ -7,8 +7,6 @@ Userscript that adds sorting to GitHub issue/PR timelines and a recent public ac
 1. Install [Tampermonkey](https://www.tampermonkey.net/) (Chrome/Edge/Safari) or [Violentmonkey](https://violentmonkey.github.io/) (Firefox/Chrome)
 2. Click [install script](../../raw/main/github-sortout.user.js)
 
-No build step. Updates are manual, so you can review changes before installing them.
-
 ## Features
 
 **Timeline sorting** - on issues and PRs, a sort bar appears above the loaded activity:
