@@ -20,7 +20,7 @@ Sorting only affects activity GitHub has loaded on the page. Click GitHub's "Loa
 
 **Recent actions** - the Sortout button opens a full-screen view of your recent public GitHub activity, newest first. It uses GitHub's public Events API for PRs, issues, comments, PR reviews, and review comments.
 
-It shows the latest 20 actions by default, with options for 50 or 100.
+It shows the latest 20 actions by default, with options for 50 or 100 and sorting by date, type, or repository.
 
 **Jump buttons** - up/down arrows sit near the Sortout button. On issues and PRs they jump through the loaded conversation; elsewhere they jump to the top or bottom of the page.
 

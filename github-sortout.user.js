@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         GitHub Sortout
 // @namespace    https://github.com/github-sortout/github-sortout
-// @version      1.0.1
+// @version      1.0.2
 // @description  Sort GitHub issue/PR timelines and show public recent activity
 // @match        https://github.com/*
 // @grant        GM_addStyle
@@ -20,6 +20,7 @@ const JUMP_DOWN_ID = 'ghs-jump-down';
 const OVERLAY_ID = 'ghs-overlay';
 const ACTIONS_LIST_ID = 'ghs-actions-list';
 const ACTION_LIMIT_ID = 'ghs-action-limit';
+const ACTION_SORT_ID = 'ghs-action-sort';
 const ACTION_LIMITS = [20, 50, 100];
 
 const originalOrder = new WeakMap();
@@ -371,7 +372,8 @@ const TimelineSorter = (() => {
         return this.items(container);
       },
       insertBar(bar, container) {
-        container.parentNode.insertBefore(bar, container);
+        const firstItem = this.items(container)[0];
+        firstItem.parentNode.insertBefore(bar, firstItem);
       },
     },
   ];
@@ -535,7 +537,16 @@ const JumpButtons = (() => {
 
 const RecentActions = (() => {
   let actionLimit = ACTION_LIMITS[0];
+  let actionSort = 'newest';
   let lastActions = [];
+  const typeOrder = {
+    Issue: 0,
+    'Issue comment': 1,
+    PR: 2,
+    'PR comment': 3,
+    'PR review': 4,
+    'Review comment': 5,
+  };
 
   function currentUser() {
     return $('meta[name="user-login"]')?.content ||
@@ -559,7 +570,7 @@ const RecentActions = (() => {
 
     if (event.type === 'PullRequestEvent' && payload.pull_request) {
       return {
-        kind: `PR ${payload.action || 'activity'}`,
+        kind: 'PR',
         title: payload.pull_request.title || 'Pull request',
         url: payload.pull_request.html_url,
         repo,
@@ -569,7 +580,7 @@ const RecentActions = (() => {
 
     if (event.type === 'IssuesEvent' && payload.issue) {
       return {
-        kind: `Issue ${payload.action || 'activity'}`,
+        kind: 'Issue',
         title: payload.issue.title || 'Issue',
         url: payload.issue.html_url,
         repo,
@@ -644,7 +655,7 @@ const RecentActions = (() => {
       return;
     }
 
-    for (const action of actions.slice(0, actionLimit)) {
+    for (const action of sortActions(actions).slice(0, actionLimit)) {
       const link = make('a', { href: safeGitHubUrl(action.url), text: action.title || action.kind });
       const meta = make('div', { className: 'ghs-meta' }, [
         make('span', { className: 'ghs-kind', text: action.kind }),
@@ -655,7 +666,37 @@ const RecentActions = (() => {
     }
   }
 
+  function sortActions(actions) {
+    return [...actions].sort((a, b) => {
+      if (actionSort === 'oldest') return new Date(a.createdAt) - new Date(b.createdAt);
+      if (actionSort === 'type') {
+        const result = (typeOrder[a.kind] ?? 99) - (typeOrder[b.kind] ?? 99);
+        return result || (new Date(b.createdAt) - new Date(a.createdAt));
+      }
+      if (actionSort === 'repo') {
+        const result = a.repo.localeCompare(b.repo);
+        return result || (new Date(b.createdAt) - new Date(a.createdAt));
+      }
+      return new Date(b.createdAt) - new Date(a.createdAt);
+    });
+  }
+
   function renderOptions(body) {
+    const sort = make('select', { id: ACTION_SORT_ID, 'aria-label': 'Recent actions sort order' });
+    for (const [value, label] of [
+      ['newest', 'Newest first'],
+      ['oldest', 'Oldest first'],
+      ['type', 'Type'],
+      ['repo', 'Repository'],
+    ]) {
+      sort.append(make('option', { value, text: label }));
+    }
+    sort.value = actionSort;
+    sort.addEventListener('change', () => {
+      actionSort = sort.value;
+      renderActions();
+    });
+
     const select = make('select', { id: ACTION_LIMIT_ID, 'aria-label': 'Number of recent actions' });
     for (const limit of ACTION_LIMITS) {
       select.append(make('option', { value: String(limit), text: String(limit) }));
@@ -667,6 +708,8 @@ const RecentActions = (() => {
     });
 
     body.append(make('div', { className: 'ghs-options' }, [
+      make('span', { text: 'Sort' }),
+      sort,
       make('span', { text: 'Show latest' }),
       select,
       make('span', { text: 'actions' }),

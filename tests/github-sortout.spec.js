@@ -86,6 +86,30 @@ test('sorts loaded React issue timeline items without moving the issue body', as
   ]);
 });
 
+test('places sort controls below the initial issue post', async ({ page }) => {
+  await openFixture(page, 'https://github.com/owner/repo/issues/6', `
+    <main>
+      <div data-testid="issue-body" style="height: 120px;">Issue body</div>
+      <div data-testid="issue-viewer-comments-container">
+        <div data-testid="issue-timeline-container">
+          <div data-label="comment">
+            <div class="react-issue-comment">
+              <relative-time datetime="2024-01-02T00:00:00.000Z"></relative-time>
+              Comment
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+  `);
+
+  await installScript(page);
+
+  const issueBottom = await page.locator('[data-testid="issue-body"]').evaluate((node) => node.getBoundingClientRect().bottom);
+  const sortTop = await page.locator('#ghs-sort-bar').evaluate((node) => node.getBoundingClientRect().top);
+  expect(sortTop).toBeGreaterThanOrEqual(issueBottom);
+});
+
 test('sorts loaded React comments across a load more divider', async ({ page }) => {
   await openFixture(page, 'https://github.com/owner/repo/issues/4', `
     <div data-testid="issue-viewer-comments-container">
@@ -130,6 +154,13 @@ test('sorts current PR conversation timeline items', async ({ page }) => {
   await openFixture(page, 'https://github.com/owner/repo/pull/2', `
     <div class="pull-discussion-timeline">
       <div class="js-discussion">
+        <div class="TimelineItem js-comment-container" data-label="initial-pr-post">
+          <div class="js-comment-container">
+            <a class="author">opener</a>
+            <relative-time datetime="2024-01-01T00:00:00.000Z"></relative-time>
+            Initial post
+          </div>
+        </div>
         <div class="js-timeline-item" data-label="old-pr-comment">
           <div class="js-comment-container">
             <a class="author">alice</a>
@@ -149,6 +180,13 @@ test('sorts current PR conversation timeline items', async ({ page }) => {
   await installScript(page);
 
   await expect(page.locator('#ghs-sort-bar')).toBeVisible();
+  await expect(await labels(page, '.js-discussion > [data-label], .js-discussion > #ghs-sort-bar')).toEqual([
+    'initial-pr-post',
+    undefined,
+    'old-pr-comment',
+    'new-pr-comment',
+  ]);
+
   await page.locator('#ghs-sort-bar button[data-sort="newest"]').click();
 
   await expect(await labels(page, '.js-discussion > .js-timeline-item')).toEqual([
@@ -310,4 +348,72 @@ test('shows the latest 20 public actions by default with count options', async (
   await page.locator('#ghs-action-limit').selectOption('50');
   await expect(page.locator('#ghs-actions-list a')).toHaveCount(25);
   await expect(page.locator('#ghs-actions-list a').last()).toHaveText('PR 0');
+});
+
+test('sorts recent actions by newest, oldest, type, and repository', async ({ page }) => {
+  const events = [
+    {
+      type: 'IssueCommentEvent',
+      created_at: '2026-05-20T13:00:00.000Z',
+      repo: { name: 'zeta/repo' },
+      payload: {
+        issue: { title: 'Comment newest', html_url: 'https://github.com/zeta/repo/issues/1' },
+        comment: { html_url: 'https://github.com/zeta/repo/issues/1#issuecomment-1' },
+      },
+    },
+    {
+      type: 'PullRequestEvent',
+      created_at: '2026-05-20T11:00:00.000Z',
+      repo: { name: 'alpha/repo' },
+      payload: {
+        action: 'opened',
+        pull_request: { title: 'PR oldest', html_url: 'https://github.com/alpha/repo/pull/1' },
+      },
+    },
+    {
+      type: 'IssuesEvent',
+      created_at: '2026-05-20T12:00:00.000Z',
+      repo: { name: 'middle/repo' },
+      payload: {
+        action: 'opened',
+        issue: { title: 'Issue middle', html_url: 'https://github.com/middle/repo/issues/1' },
+      },
+    },
+  ];
+
+  await openFixture(page, 'https://github.com/', '<main>Home</main>');
+  await page.route('https://api.github.com/users/octocat/events/public?per_page=100', (route) => route.fulfill({
+    contentType: 'application/json',
+    body: JSON.stringify(events),
+  }));
+
+  await installScript(page);
+  await page.locator('#ghs-trigger').click();
+
+  await expect(page.locator('#ghs-actions-list a')).toHaveText([
+    'Comment newest',
+    'Issue middle',
+    'PR oldest',
+  ]);
+
+  await page.locator('#ghs-action-sort').selectOption('oldest');
+  await expect(page.locator('#ghs-actions-list a')).toHaveText([
+    'PR oldest',
+    'Issue middle',
+    'Comment newest',
+  ]);
+
+  await page.locator('#ghs-action-sort').selectOption('type');
+  await expect(page.locator('#ghs-actions-list a')).toHaveText([
+    'Issue middle',
+    'Comment newest',
+    'PR oldest',
+  ]);
+
+  await page.locator('#ghs-action-sort').selectOption('repo');
+  await expect(page.locator('#ghs-actions-list a')).toHaveText([
+    'PR oldest',
+    'Issue middle',
+    'Comment newest',
+  ]);
 });
