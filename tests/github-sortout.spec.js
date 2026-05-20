@@ -86,6 +86,46 @@ test('sorts loaded React issue timeline items without moving the issue body', as
   ]);
 });
 
+test('sorts loaded React comments across a load more divider', async ({ page }) => {
+  await openFixture(page, 'https://github.com/owner/repo/issues/4', `
+    <div data-testid="issue-viewer-comments-container">
+      <div data-testid="issue-timeline-container">
+        <div data-label="old-comment" class="LayoutHelpers-module__timelineElement__ARvqv">
+          <div class="react-issue-comment">
+            <relative-time datetime="2024-01-02T00:00:00.000Z"></relative-time>
+            Old loaded comment
+          </div>
+        </div>
+        <div data-label="load-more" class="LayoutHelpers-module__timelineElement__ARvqv">
+          <button>Load more</button>
+        </div>
+        <div data-label="newest-comment" class="LayoutHelpers-module__timelineElement__ARvqv">
+          <div class="react-issue-comment">
+            <relative-time datetime="2024-01-05T00:00:00.000Z"></relative-time>
+            Newest loaded comment
+          </div>
+        </div>
+      </div>
+    </div>
+  `);
+
+  await installScript(page);
+  await page.locator('#ghs-sort-bar button[data-sort="newest"]').click();
+
+  await expect(await labels(page, '[data-testid="issue-timeline-container"] > [data-label]')).toEqual([
+    'newest-comment',
+    'old-comment',
+    'load-more',
+  ]);
+
+  await page.locator('#ghs-sort-bar button[data-sort="default"]').click();
+  await expect(await labels(page, '[data-testid="issue-timeline-container"] > [data-label]')).toEqual([
+    'old-comment',
+    'load-more',
+    'newest-comment',
+  ]);
+});
+
 test('sorts current PR conversation timeline items', async ({ page }) => {
   await openFixture(page, 'https://github.com/owner/repo/pull/2', `
     <div class="pull-discussion-timeline">
@@ -115,6 +155,41 @@ test('sorts current PR conversation timeline items', async ({ page }) => {
     'new-pr-comment',
     'old-pr-comment',
   ]);
+});
+
+test('injects jump buttons that scroll between top and bottom', async ({ page }) => {
+  await openFixture(page, 'https://github.com/owner/repo/issues/5', `
+    <main style="height: 2600px;">
+      <div data-testid="issue-body">Issue body</div>
+      <div data-testid="issue-viewer-comments-container">
+        <div data-testid="issue-timeline-container">
+          <div data-label="first-comment" style="margin-top: 800px;">
+            <div class="react-issue-comment">
+              <relative-time datetime="2024-01-02T00:00:00.000Z"></relative-time>
+              First comment
+            </div>
+          </div>
+          <div data-label="last-comment" style="margin-top: 900px;">
+            <div class="react-issue-comment">
+              <relative-time datetime="2024-01-05T00:00:00.000Z"></relative-time>
+              Last comment
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+  `);
+
+  await installScript(page);
+
+  await expect(page.locator('#ghs-jump-up')).toBeVisible();
+  await expect(page.locator('#ghs-jump-down')).toBeVisible();
+
+  await page.locator('#ghs-jump-down').click();
+  await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(500);
+
+  await page.locator('#ghs-jump-up').click();
+  await expect.poll(() => page.evaluate(() => window.scrollY)).toBeLessThan(100);
 });
 
 test('sorts by reaction counts on React issue and PR markup', async ({ page }) => {
@@ -205,3 +280,34 @@ test('renders public GitHub events in a full-screen overlay without executing HT
   await expect(page.evaluate(() => window.__sortoutXss)).resolves.toBeUndefined();
 });
 
+test('shows the latest 20 public actions by default with count options', async ({ page }) => {
+  const events = Array.from({ length: 25 }, (_, index) => ({
+    type: 'PullRequestEvent',
+    created_at: new Date(Date.UTC(2026, 4, 20, 0, index)).toISOString(),
+    repo: { name: 'owner/repo' },
+    payload: {
+      action: 'opened',
+      pull_request: {
+        title: `PR ${index}`,
+        html_url: `https://github.com/owner/repo/pull/${index}`,
+      },
+    },
+  })).reverse();
+
+  await openFixture(page, 'https://github.com/', '<main>Home</main>');
+  await page.route('https://api.github.com/users/octocat/events/public?per_page=100', (route) => route.fulfill({
+    contentType: 'application/json',
+    body: JSON.stringify(events),
+  }));
+
+  await installScript(page);
+  await page.locator('#ghs-trigger').click();
+
+  await expect(page.locator('#ghs-actions-list a')).toHaveCount(20);
+  await expect(page.locator('#ghs-actions-list a').first()).toHaveText('PR 24');
+  await expect(page.locator('#ghs-actions-list a').last()).toHaveText('PR 5');
+
+  await page.locator('#ghs-action-limit').selectOption('50');
+  await expect(page.locator('#ghs-actions-list a')).toHaveCount(25);
+  await expect(page.locator('#ghs-actions-list a').last()).toHaveText('PR 0');
+});
