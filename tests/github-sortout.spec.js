@@ -318,6 +318,33 @@ test('renders public GitHub events in a full-screen overlay without executing HT
   await expect(page.evaluate(() => window.__sortoutXss)).resolves.toBeUndefined();
 });
 
+test('links pull request events when GitHub omits html_url', async ({ page }) => {
+  await openFixture(page, 'https://github.com/', '<main>Home</main>');
+  await page.route('https://api.github.com/users/octocat/events/public?per_page=100', (route) => route.fulfill({
+    contentType: 'application/json',
+    body: JSON.stringify([
+      {
+        type: 'PullRequestEvent',
+        created_at: '2026-05-20T12:00:00.000Z',
+        repo: { name: 'owner/repo' },
+        payload: {
+          action: 'opened',
+          number: 123,
+          pull_request: {
+            title: 'PR without html_url',
+            url: 'https://api.github.com/repos/owner/repo/pulls/123',
+          },
+        },
+      },
+    ]),
+  }));
+
+  await installScript(page);
+  await page.locator('#ghs-trigger').click();
+
+  await expect(page.locator('#ghs-actions-list a')).toHaveAttribute('href', 'https://github.com/owner/repo/pull/123');
+});
+
 test('shows the latest 20 public actions by default with count options', async ({ page }) => {
   const events = Array.from({ length: 25 }, (_, index) => ({
     type: 'PullRequestEvent',

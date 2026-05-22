@@ -569,10 +569,13 @@ const RecentActions = (() => {
     const createdAt = event.created_at || '';
 
     if (event.type === 'PullRequestEvent' && payload.pull_request) {
+      const url = payload.pull_request.html_url ||
+        (repo && payload.number ? `https://github.com/${repo}/pull/${payload.number}` : '');
+
       return {
         kind: 'PR',
         title: payload.pull_request.title || 'Pull request',
-        url: payload.pull_request.html_url,
+        url,
         repo,
         createdAt,
       };
